@@ -1,5 +1,6 @@
 import math
 import torch
+
 import torch.nn.functional as F
 from torch import nn
 from torch.cuda.amp import autocast
@@ -13,6 +14,10 @@ from axial_positional_embedding import AxialPositionalEmbedding
 from performer_pytorch.reversible import ReversibleSequence, SequentialSequence
 
 from distutils.version import LooseVersion
+
+# Moe
+from linformer_pytorch.py import MHAttention
+from torch.utils.checkpoint import checkpoint
 
 TORCH_GE_1_8_0 = LooseVersion(torch.__version__) >= LooseVersion('1.8.0')
 
@@ -350,6 +355,7 @@ class Chunk(nn.Module):
         chunks = x.chunk(self.chunks, dim = self.dim)
         return torch.cat([self.fn(c, **kwargs) for c in chunks], dim = self.dim)
 
+## TODO: ADD DROP OUT FOR LINFORMER
 class FeedForward(nn.Module):
     def __init__(self, dim, mult = 4, dropout = 0., activation = None, glu = False):
         super().__init__()
