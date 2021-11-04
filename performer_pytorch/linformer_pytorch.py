@@ -20,7 +20,15 @@ class LinearAttentionHead(nn.Module):
     """
     Linear attention, as proposed by the linformer paper
     """
-    def __init__(self, dim, dropout, E_proj, F_proj, causal_mask, full_attention=False):
+    def __init__(
+        self, 
+        dim, 
+        dropout, 
+        E_proj, 
+        F_proj, 
+        causal_mask, 
+        full_attention=False
+    ):
         super(LinearAttentionHead, self).__init__()
         self.E = E_proj
         self.F = F_proj
@@ -90,8 +98,25 @@ class MHAttention(nn.Module):
     Multihead attention, with each head being a Linformer Head
     This feeds directly into a feed forward head
     """
-    def __init__(self, input_size, dim, channels, dim_k, nhead, dropout, checkpoint_level,
-            parameter_sharing, E_proj, F_proj, full_attention, causal_mask, w_o_intermediate_dim=None, decoder_mode=False, method="learnable"):
+    def __init__(
+        self, 
+        dim, 
+        nhead,
+        dropout, 
+
+        input_size, 
+        channels, 
+        dim_k,  
+        checkpoint_level,
+        parameter_sharing, 
+        E_proj, 
+        F_proj, 
+        full_attention, 
+        causal_mask, 
+        w_o_intermediate_dim=None, 
+        decoder_mode=False, 
+        method="learnable"
+    ):
         super(MHAttention, self).__init__()
         self.heads = nn.ModuleList()
         self.input_size = input_size

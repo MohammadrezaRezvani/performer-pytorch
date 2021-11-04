@@ -16,7 +16,7 @@ from performer_pytorch.reversible import ReversibleSequence, SequentialSequence
 from distutils.version import LooseVersion
 
 # Moe
-from linformer_pytorch.py import MHAttention
+from linformer_pytorch import MHAttention
 from torch.utils.checkpoint import checkpoint
 
 TORCH_GE_1_8_0 = LooseVersion(torch.__version__) >= LooseVersion('1.8.0')
@@ -449,15 +449,21 @@ class Attention(nn.Module):
         out =  self.to_out(out)
         return self.dropout(out)
 
-class SelfAttention(Attention):
-    def forward(self, *args, context = None, **kwargs):
+class SelfAttention(Attention, MHAttention):
+    def forward(self, *args, context = None, algo = "performer", **kwargs):
         assert not exists(context), 'self attention should not receive context'
-        return super().forward(*args, **kwargs)
+        if(algo == "performer"):
+            return Attention.forward(*args, **kwargs)
+        else:
+            return MHAttention.forward(*args, **kwargs)
 
-class CrossAttention(Attention):
-    def forward(self, *args, context = None, **kwargs):
+class CrossAttention(Attention, MHAttention):
+    def forward(self, *args, context = None, algo = "performer", **kwargs):
         assert exists(context), 'cross attention should receive context'
-        return super().forward(*args, context = context, **kwargs)
+        if(algo == "performer"):
+            return Attention.forward(*args, context = context, **kwargs)
+        else:
+            return MHAttention.forward(*args, context = context, **kwargs)
 
 # positional embeddings
 
