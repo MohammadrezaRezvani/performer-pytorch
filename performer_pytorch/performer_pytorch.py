@@ -17,6 +17,7 @@ from distutils.version import LooseVersion
 
 # Moe
 from linformer_pytorch import MHAttention
+from linformer_pytorch import get_EF
 from torch.utils.checkpoint import checkpoint
 
 TORCH_GE_1_8_0 = LooseVersion(torch.__version__) >= LooseVersion('1.8.0')
@@ -416,7 +417,8 @@ class Attention(nn.Module):
         if attention_mec == "performer":
             self.fast_attention = FastAttention(dim_head, nb_features, causal = causal, generalized_attention = generalized_attention, kernel_fn = kernel_fn, no_projection = no_projection)
         else:
-            self.fast_attention = MHAttention(dim = dim_head, nhead = heads, dropout = dropout, input_size = ?, channels = ?, dim_k = max_seq_len, E_proj = ?, F_proj = ?)
+            E_proj = get_EF(input_size = ?, dim_k = max_seq_len, method = "learnable", head_dim = ?)
+            self.fast_attention = MHAttention(dim = dim_head, nhead = heads, dropout = dropout, input_size = ?, channels = ?, dim_k = max_seq_len, E_proj = E_proj, F_proj = E_proj)
 
 
         self.heads = heads
