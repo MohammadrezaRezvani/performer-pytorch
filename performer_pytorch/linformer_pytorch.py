@@ -1,20 +1,11 @@
-def get_EF(input_size, dim, method="learnable", head_dim=None, bias=True):
+def gen_causal_mask(input_size, dim_k, full_attention=False):
     """
-    Retuns the E or F matrix, initialized via xavier initialization.
-    This is the recommended way to do it according to the authors of the paper.
-    Includes a method for convolution, as well as a method for no additional params.
+    Generates a causal mask of size (input_size, dim_k) for linformer
+    Else, it generates (input_size, input_size) for full attention
     """
-    assert method == "learnable" or method == "convolution" or method == "no_params", "The method flag needs to be either 'learnable', 'convolution', or 'no_params'!"
-    if method == "convolution":
-        conv = nn.Conv1d(head_dim, head_dim, kernel_size=int(input_size/dim), stride=int(input_size/dim))
-        return conv
-    if method == "no_params":
-        mat = torch.zeros((input_size, dim))
-        torch.nn.init.normal_(mat, mean=0.0, std=1/dim)
-        return mat
-    lin = nn.Linear(input_size, dim, bias)
-    torch.nn.init.xavier_normal_(lin.weight)
-    return lin
+    if full_attention:
+        return (torch.triu(torch.ones(input_size, input_size))==1).transpose(0,1)
+    return (torch.triu(torch.ones(dim_k, input_size))==1).transpose(0,1)
 
 class LinearAttentionHead(nn.Module):
     """
@@ -106,39 +97,34 @@ class MHAttention(nn.Module):
 
         input_size, 
         channels, 
-        dim_k,  
-        checkpoint_level,
-        parameter_sharing, 
-        E_proj, 
-        F_proj, 
-        full_attention, 
-        causal_mask, 
-        w_o_intermediate_dim=None, 
-        decoder_mode=False, 
-        method="learnable"
+        
+        dim_k,                              # necessary fot linformer
+        E_proj,                             # necessary fot linformer
+        F_proj,                             # necessary fot linformer
+
+        # Don't change default
+        w_o_intermediate_dim=None,          # necessary fot linformer
+        decoder_mode=False,                 # necessary fot linformer
+        method="learnable"                  # necessary fot linformer
     ):
         super(MHAttention, self).__init__()
         self.heads = nn.ModuleList()
         self.input_size = input_size
         self.dim_k = dim_k
         self.channels = channels
-        self.causal_mask = causal_mask
-        self.checkpoint_level = checkpoint_level
         self.w_o_intermediate_dim = w_o_intermediate_dim
-        if parameter_sharing != "layerwise":
-            E_proj = get_EF(input_size, dim_k, method, dim)
-            F_proj = get_EF(input_size, dim_k, method, dim) if parameter_sharing == "none" or parameter_sharing == "headwise" else E_proj
 
         self.decoder_mode = decoder_mode
         self.to_q = nn.ModuleList()
         self.to_k = nn.ModuleList()
         self.to_v = nn.ModuleList()
 
+        # Maybe change causal?
+        self.causal_mask = gen_causal_mask(input_size, dim_k, full_attention) if True else None
+
+
         for _ in range(nhead):
-            if parameter_sharing == "none":
-                E_proj = get_EF(input_size, dim_k, method, dim)
-                F_proj = get_EF(input_size, dim_k, method, dim)
-            attn = LinearAttentionHead(dim, dropout, E_proj, F_proj, causal_mask, full_attention)
+            attn = LinearAttentionHead(dim, dropout, E_proj, F_proj, causal_mask)
             self.heads.append(attn)
             self.to_q.append(nn.Linear(channels, dim, bias=False))
             self.to_k.append(nn.Linear(channels, dim, bias=False))
@@ -159,10 +145,9 @@ class MHAttention(nn.Module):
             Q = self.to_q[index](tensor)
             K = self.to_k[index](tensor) if not self.decoder_mode else self.to_k[index](kwargs["embeddings"])
             V = self.to_v[index](tensor) if not self.decoder_mode else self.to_v[index](kwargs["embeddings"])
-            if self.checkpoint_level == "C2":
-                head_outputs.append(checkpoint(head,Q,K,V))
-            else:
-                head_outputs.append(head(Q,K,V,**kwargs))
+            
+            head_outputs.append(head(Q,K,V,**kwargs))
+            
         out = torch.cat(head_outputs, dim=-1)
         if self.w_o_intermediate_dim is None:
             out = self.w_o(out)
@@ -170,4 +155,78 @@ class MHAttention(nn.Module):
             out = self.w_o_1(out)
             out = self.w_o_2(out)
         out = self.mh_dropout(out)
+        return out
+
+
+##################################
+# Linformer
+##################################
+def get_EF(input_size, dim, method="learnable", head_dim=None, bias=True):
+    """
+    Retuns the E or F matrix, initialized via xavier initialization.
+    This is the recommended way to do it according to the authors of the paper.
+    Includes a method for convolution, as well as a method for no additional params.
+    """
+    assert method == "learnable" or method == "convolution" or method == "no_params", "The method flag needs to be either 'learnable', 'convolution', or 'no_params'!"
+    if method == "convolution":
+        conv = nn.Conv1d(head_dim, head_dim, kernel_size=int(input_size/dim), stride=int(input_size/dim))
+        return conv
+    if method == "no_params":
+        mat = torch.zeros((input_size, dim))
+        torch.nn.init.normal_(mat, mean=0.0, std=1/dim)
+        return mat
+    lin = nn.Linear(input_size, dim, bias)
+    torch.nn.init.xavier_normal_(lin.weight)
+    return lin
+
+class linformerAttention(nn.Module):
+    def __init__(
+        self, 
+        dim,
+        dropout,
+        
+        # TODO: Figure out what are these
+        input_size,
+        dim_k,
+
+        full_attention = False,     # If False it will use linformer implementation
+        parameter_sharing = none,   # The `parameter_sharing` flag has to be either 'none', 'headwise', 'kv', or 'layerwise'."
+    ):
+        super().__init__()
+
+        self.dim = dim
+        self.dropout = nn.Dropout(dropout)
+        self.full_attention = full_attention
+
+        self.E = get_EF(input_size, dim_k, method = "learnable", dim = dim)
+        self.F = get_EF(input_size, dim_k, method = "learnable", dim = dim) if parameter_sharing == "none" or parameter_sharing == "headwise" else E_proj
+
+        self.is_proj_tensor = isinstance(self.E, torch.Tensor)
+
+    def forward(self, q, k, v):
+        
+        k = k.transpose(1,2)
+        if not self.full_attention:
+            if self.is_proj_tensor:
+                self.E = self.E.to(k.device)
+                k = torch.matmul(k, self.E)
+            else:
+                k = self.E(k)
+        
+        q = torch.matmul(q, K)
+        P_bar = q/torch.sqrt(torch.tensor(self.dim).type(q.type())).to(q.device)
+
+        P_bar = P_bar.softmax(dim=-1)
+        P_bar = self.dropout(P_bar)
+        
+        if not self.full_attention:
+            v = v.transpose(1,2)
+            if self.is_proj_tensor:
+                self.F = self.F.to(v.device)
+                v = torch.matmul(v, self.F)
+            else:
+                v = self.F(v)
+            v = V.transpose(1,2)
+        
+        out = torch.matmul(P_bar, V)
         return out

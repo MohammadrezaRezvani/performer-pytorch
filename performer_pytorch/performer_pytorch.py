@@ -224,7 +224,16 @@ def causal_linear_attention_noncuda(q, k, v, chunk_size = 128, eps = 1e-6):
     return torch.cat(outs, dim = -2)
 
 class FastAttention(nn.Module):
-    def __init__(self, dim_heads, nb_features = None, ortho_scaling = 0, causal = False, generalized_attention = False, kernel_fn = nn.ReLU(), no_projection = False):
+    def __init__(
+        self, 
+        dim_heads, 
+        nb_features = None, 
+        ortho_scaling = 0, 
+        causal = False, 
+        generalized_attention = False, 
+        kernel_fn = nn.ReLU(), 
+        no_projection = False
+    ):
         super().__init__()
         nb_features = default(nb_features, int(dim_heads * math.log(dim_heads)))
 
