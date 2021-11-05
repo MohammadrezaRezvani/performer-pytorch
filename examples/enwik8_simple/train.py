@@ -49,7 +49,7 @@ model = PerformerLM(
     use_scalenorm = True,
     shift_tokens = True,
     local_attn_heads = (8, 8, 8, 6, 4, 2),
-    attention_mec = "performer"
+    attention_mec = "linformer"
 )
 
 model = AutoregressiveWrapper(model)

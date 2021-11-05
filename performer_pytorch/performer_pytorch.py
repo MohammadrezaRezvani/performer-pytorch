@@ -416,10 +416,10 @@ class Attention(nn.Module):
         dim_head = default(dim_head, dim // heads)
         inner_dim = dim_head * heads
 
-        #if attention_mec == "performer":
-        self.fast_attention = FastAttention(dim_head, nb_features, causal = causal, generalized_attention = generalized_attention, kernel_fn = kernel_fn, no_projection = no_projection)
-#        else:
- #           self.fast_attention = linformerAttention(dim = dim_head, dropout = dropout, input_size = max_seq_len)
+        if attention_mec == "performer":
+           self.fast_attention = FastAttention(dim_head, nb_features, causal = causal, generalized_attention = generalized_attention, kernel_fn = kernel_fn, no_projection = no_projection)
+        else:
+           self.fast_attention = linformerAttention(dim = dim_head, dropout = dropout, input_size = max_seq_len)
 
 
         self.heads = heads
@@ -471,12 +471,12 @@ class Attention(nn.Module):
 class SelfAttention(Attention):
     def forward(self, *args, context = None, **kwargs):
         assert not exists(context), 'self attention should not receive context'
-        return Attention.forward(*args, **kwargs)
+        return super().forward(*args, **kwargs)
 
 class CrossAttention(Attention):
     def forward(self, *args, context = None, **kwargs):
         assert exists(context), 'cross attention should receive context'
-        return Attention.forward(*args, context = context, **kwargs)
+        return super().forward(*args, context = context, **kwargs)
 
 # positional embeddings
 
