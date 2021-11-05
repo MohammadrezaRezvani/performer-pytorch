@@ -39,14 +39,19 @@ class linformerAttention(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.dim_k = dim_k
         self.full_attention = full_attention
+        self.input_size = input_size
 
+        self.print_dim = True
         self.E = get_EF(input_size, dim = self.dim_k, method = "learnable", head_dim = self.dim)
         self.F = get_EF(input_size, dim = self.dim_k, method = "learnable", head_dim = self.dim) if parameter_sharing == "none" or parameter_sharing == "headwise" else self.E
 
         self.is_proj_tensor = isinstance(self.E, torch.Tensor)
 
     def forward(self, q, k, v):
-        
+        if self.print_dim:
+            print("matmul(k, e)")
+            print("k:"+str(k.shape))
+            print("E:"+str(self.input_size)+", "+str(self.dim_k))
         k = k.transpose(1,2)
         if not self.full_attention:
             if self.is_proj_tensor:
@@ -55,6 +60,10 @@ class linformerAttention(nn.Module):
             else:
                 k = self.E(k)
         
+        if self.print_dim:
+            print("matmul(q, k)")
+            print("q:"+str(q.shape))
+            print("K:"+str(K.shape))
         q = torch.matmul(q, K)
         P_bar = q/torch.sqrt(torch.tensor(self.dim).type(q.type())).to(q.device)
 
@@ -64,6 +73,11 @@ class linformerAttention(nn.Module):
         if not self.full_attention:
             v = v.transpose(1,2)
             if self.is_proj_tensor:
+                if self.print_dim:
+                    print("matmul(v, F)")
+                    print("v:"+str(q.shape))
+                    print("F:"+str(self.input_size)+", "+str(self.dim_k))
+                    self.print_dim = False
                 self.F = self.F.to(v.device)
                 v = torch.matmul(v, self.F)
             else:

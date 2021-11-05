@@ -10,7 +10,7 @@ import torch.optim as optim
 from torch.nn import functional as F
 from torch.utils.data import DataLoader, Dataset
 from torch.cuda.amp import autocast, GradScaler
-
+import sys
 # constants
 
 NUM_BATCHES = int(1e1)
@@ -49,7 +49,7 @@ model = PerformerLM(
     use_scalenorm = True,
     shift_tokens = True,
     local_attn_heads = (8, 8, 8, 6, 4, 2),
-    attention_mec = "linformer"
+    attention_mec = "linformer" if sys.argv[1] == "l" else "performer"
 )
 
 model = AutoregressiveWrapper(model)

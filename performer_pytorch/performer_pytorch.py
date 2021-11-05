@@ -236,7 +236,8 @@ class FastAttention(nn.Module):
     ):
         super().__init__()
         nb_features = default(nb_features, int(dim_heads * math.log(dim_heads)))
-
+        # debug
+        self.print_dim = True
         self.dim_heads = dim_heads
         self.nb_features = nb_features
         self.ortho_scaling = ortho_scaling
@@ -269,10 +270,6 @@ class FastAttention(nn.Module):
 
     def forward(self, q, k, v):
         device = q.device
-
-        print(q.shape)
-        print(k.shape)
-        print(v.shape)
 
         if self.no_projection:
             q = q.softmax(dim = -1)
@@ -415,6 +412,7 @@ class Attention(nn.Module):
         assert dim % heads == 0, 'dimension must be divisible by number of heads'
         dim_head = default(dim_head, dim // heads)
         inner_dim = dim_head * heads
+        self.print_dim = True
 
         if attention_mec == "performer":
            self.fast_attention = FastAttention(dim_head, nb_features, causal = causal, generalized_attention = generalized_attention, kernel_fn = kernel_fn, no_projection = no_projection)
@@ -454,7 +452,12 @@ class Attention(nn.Module):
 
             if exists(pos_emb) and not cross_attend:
                 q, k = apply_rotary_pos_emb(q, k, pos_emb)
-
+      
+            if self.print_dim:
+                print("q:"+str(q.shape))
+                print("k:"+str(k.shape))
+                print("v:"+str(v.shape))
+                self.print_dim = False
             out = self.fast_attention(q, k, v)
             attn_outs.append(out)
 
