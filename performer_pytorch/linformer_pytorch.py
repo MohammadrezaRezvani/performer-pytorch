@@ -1,3 +1,7 @@
+import torch 
+from torch import nn
+
+
 def gen_causal_mask(input_size, dim_k, full_attention=False):
     """
     Generates a causal mask of size (input_size, dim_k) for linformer
@@ -120,11 +124,12 @@ class MHAttention(nn.Module):
         self.to_v = nn.ModuleList()
 
         # Maybe change causal?
+        full_attention = ? # TODO
         self.causal_mask = gen_causal_mask(input_size, dim_k, full_attention) if True else None
 
 
         for _ in range(nhead):
-            attn = LinearAttentionHead(dim, dropout, E_proj, F_proj, causal_mask)
+            attn = LinearAttentionHead(dim, dropout, E_proj, F_proj, self.causal_mask)
             self.heads.append(attn)
             self.to_q.append(nn.Linear(channels, dim, bias=False))
             self.to_k.append(nn.Linear(channels, dim, bias=False))
