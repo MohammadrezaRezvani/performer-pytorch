@@ -392,6 +392,7 @@ class Attention(nn.Module):
     def __init__(
         self,
         dim,
+        max_seq_len,
         causal = False,
         heads = 8,
         dim_head = 64,
@@ -410,7 +411,13 @@ class Attention(nn.Module):
         assert dim % heads == 0, 'dimension must be divisible by number of heads'
         dim_head = default(dim_head, dim // heads)
         inner_dim = dim_head * heads
-        self.fast_attention = FastAttention(dim_head, nb_features, causal = causal, generalized_attention = generalized_attention, kernel_fn = kernel_fn, no_projection = no_projection)
+        
+        self.attention_mec = "performer"
+
+        if attention_mec == "performer":
+            self.fast_attention = FastAttention(dim_head, nb_features, causal = causal, generalized_attention = generalized_attention, kernel_fn = kernel_fn, no_projection = no_projection)
+        else:
+            self.fast_attention = 
 
         self.heads = heads
         self.global_heads = heads - local_heads
@@ -458,21 +465,15 @@ class Attention(nn.Module):
         out =  self.to_out(out)
         return self.dropout(out)
 
-class SelfAttention(Attention, MHAttention):
+class SelfAttention(Attention):
     def forward(self, *args, context = None, algo = "performer", **kwargs):
         assert not exists(context), 'self attention should not receive context'
-        if(algo == "performer"):
-            return Attention.forward(*args, **kwargs)
-        else:
-            return MHAttention.forward(*args, **kwargs)
+        return Attention.forward(*args, **kwargs)
 
-class CrossAttention(Attention, MHAttention):
+class CrossAttention(Attention):
     def forward(self, *args, context = None, algo = "performer", **kwargs):
         assert exists(context), 'cross attention should receive context'
-        if(algo == "performer"):
-            return Attention.forward(*args, context = context, **kwargs)
-        else:
-            return MHAttention.forward(*args, context = context, **kwargs)
+        return Attention.forward(*args, context = context, **kwargs)
 
 # positional embeddings
 
@@ -523,6 +524,7 @@ class Performer(nn.Module):
         depth,
         heads,
         dim_head,
+        max_seq_len = 64,
         local_attn_heads = 0,
         local_window_size = 256,
         causal = False,
@@ -561,7 +563,7 @@ class Performer(nn.Module):
 
         for _, local_heads in zip(range(depth), local_attn_heads):
 
-            attn = SelfAttention(dim, causal = causal, heads = heads, dim_head = dim_head, local_heads = local_heads, local_window_size = local_window_size, nb_features = nb_features, generalized_attention = generalized_attention, kernel_fn = kernel_fn, dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias, attn_out_bias = attn_out_bias)
+            attn = SelfAttention(dim, max_seq_len = max_seq_len, causal = causal, heads = heads, dim_head = dim_head, local_heads = local_heads, local_window_size = local_window_size, nb_features = nb_features, generalized_attention = generalized_attention, kernel_fn = kernel_fn, dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias, attn_out_bias = attn_out_bias)
             ff = Chunk(ff_chunks, FeedForward(dim, mult = ff_mult, dropout = ff_dropout, glu = ff_glu), along_dim = 1)
 
             if shift_tokens:
@@ -575,7 +577,7 @@ class Performer(nn.Module):
                 continue
 
             layers.append(nn.ModuleList([
-                wrapper_fn(CrossAttention(dim, heads = heads, dim_head = dim_head, nb_features = nb_features, generalized_attention = generalized_attention, kernel_fn = kernel_fn, dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias, attn_out_bias = attn_out_bias)),
+                wrapper_fn(CrossAttention(dim, max_seq_len = max_seq_len, heads = heads, dim_head = dim_head, nb_features = nb_features, generalized_attention = generalized_attention, kernel_fn = kernel_fn, dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias, attn_out_bias = attn_out_bias)),
                 wrapper_fn(Chunk(ff_chunks, FeedForward(dim, mult = ff_mult, dropout = ff_dropout, glu = ff_glu), along_dim = 1))
             ]))
 
@@ -655,7 +657,7 @@ class PerformerLM(nn.Module):
 
         self.dropout = nn.Dropout(emb_dropout)
 
-        self.performer = Performer(dim, depth, heads, dim_head, local_attn_heads, local_window_size, causal, ff_mult, nb_features, feature_redraw_interval, reversible, ff_chunks, generalized_attention, kernel_fn, use_scalenorm, use_rezero, ff_glu, ff_dropout, attn_dropout, cross_attend, no_projection, auto_check_redraw, qkv_bias, attn_out_bias, shift_tokens)
+        self.performer = Performer(dim, depth, heads, dim_head, max_seq_len, local_attn_heads, local_window_size, causal, ff_mult, nb_features, feature_redraw_interval, reversible, ff_chunks, generalized_attention, kernel_fn, use_scalenorm, use_rezero, ff_glu, ff_dropout, attn_dropout, cross_attend, no_projection, auto_check_redraw, qkv_bias, attn_out_bias, shift_tokens)
         self.norm = nn.LayerNorm(dim)
         self.to_out = nn.Linear(dim, num_tokens) if not tie_embed else None
 
