@@ -16,7 +16,7 @@ from performer_pytorch.reversible import ReversibleSequence, SequentialSequence
 from distutils.version import LooseVersion
 
 # Moe
-from linformer_pytorch import linformerAttention
+from .linformer_pytorch import linformerAttention
 from torch.utils.checkpoint import checkpoint
 
 TORCH_GE_1_8_0 = LooseVersion(torch.__version__) >= LooseVersion('1.8.0')
@@ -270,6 +270,10 @@ class FastAttention(nn.Module):
     def forward(self, q, k, v):
         device = q.device
 
+        print(q.shape)
+        print(k.shape)
+        print(v.shape)
+
         if self.no_projection:
             q = q.softmax(dim = -1)
             k = torch.exp(k) if self.causal else k.softmax(dim = -2)
@@ -412,10 +416,10 @@ class Attention(nn.Module):
         dim_head = default(dim_head, dim // heads)
         inner_dim = dim_head * heads
 
-        if attention_mec == "performer":
-            self.fast_attention = FastAttention(dim_head, nb_features, causal = causal, generalized_attention = generalized_attention, kernel_fn = kernel_fn, no_projection = no_projection)
-        else:
-            self.fast_attention = linformerAttention(dim = dim_head, dropout = dropout, input_size = max_seq_len)
+        #if attention_mec == "performer":
+        self.fast_attention = FastAttention(dim_head, nb_features, causal = causal, generalized_attention = generalized_attention, kernel_fn = kernel_fn, no_projection = no_projection)
+#        else:
+ #           self.fast_attention = linformerAttention(dim = dim_head, dropout = dropout, input_size = max_seq_len)
 
 
         self.heads = heads
@@ -640,6 +644,9 @@ class PerformerLM(nn.Module):
         attention_mec = "performer"
     ):
         super().__init__()
+
+        print(attention_mec)        
+
         local_attn_heads = cast_tuple(local_attn_heads)
 
         self.max_seq_len = max_seq_len

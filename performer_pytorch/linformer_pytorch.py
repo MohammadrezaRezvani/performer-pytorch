@@ -31,7 +31,7 @@ class linformerAttention(nn.Module):
         
         dim_k = 20,                 # Probably 20? Maybe the dimantion we want K and V be       
         full_attention = False,     # If False it will use linformer implementation
-        parameter_sharing = none,   # The `parameter_sharing` flag has to be either 'none', 'headwise', 'kv', or 'layerwise'."
+        parameter_sharing = None,   # The `parameter_sharing` flag has to be either 'none', 'headwise', 'kv', or 'layerwise'."
     ):
         super().__init__()
 
@@ -40,8 +40,8 @@ class linformerAttention(nn.Module):
         self.dim_k = dim_k
         self.full_attention = full_attention
 
-        self.E = get_EF(input_size, dim_k = self.dim_k, method = "learnable", dim = self.dim)
-        self.F = get_EF(input_size, dim_k = self.dim_k, method = "learnable", dim = self.dim) if parameter_sharing == "none" or parameter_sharing == "headwise" else E_proj
+        self.E = get_EF(input_size, dim = self.dim_k, method = "learnable", head_dim = self.dim)
+        self.F = get_EF(input_size, dim = self.dim_k, method = "learnable", head_dim = self.dim) if parameter_sharing == "none" or parameter_sharing == "headwise" else self.E
 
         self.is_proj_tensor = isinstance(self.E, torch.Tensor)
 

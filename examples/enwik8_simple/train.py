@@ -13,7 +13,7 @@ from torch.cuda.amp import autocast, GradScaler
 
 # constants
 
-NUM_BATCHES = int(1e5)
+NUM_BATCHES = int(1e1)
 BATCH_SIZE = 4
 GRADIENT_ACCUMULATE_EVERY = 4
 LEARNING_RATE = 1e-4

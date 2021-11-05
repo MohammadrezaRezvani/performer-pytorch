@@ -8,7 +8,7 @@ setup(
   description = 'Performer - Pytorch',
   author = 'Phil Wang',
   author_email = 'lucidrains@gmail.com',
-  url = 'https://github.com/lucidrains/performer-pytorch',
+  url = 'https://github.com/MohammadrezaRezvani/performer-pytorch',
   keywords = [
     'artificial intelligence',
     'attention mechanism',
