@@ -92,7 +92,7 @@ class PreShiftTokens(nn.Module):
 # transcribed from jax to pytorch from
 # https://github.com/google-research/google-research/blob/master/performer/fast_attention/jax/fast_attention.py
 
-def softmax_kernel(data, *, projection_matrix, is_query, normalize_data=True, eps=1e-4, device = None):
+def softmax_kernel(data, *, projection_matrix, is_query, normalize_data=True, eps=1e-4, device = None):   
     b, h, *_ = data.shape
 
     data_normalizer = (data.shape[-1] ** -0.25) if normalize_data else 1.
@@ -237,7 +237,7 @@ class FastAttention(nn.Module):
         super().__init__()
         nb_features = default(nb_features, int(dim_heads * math.log(dim_heads)))
         # debug
-        self.print_dim = True
+        self.print_dim = False
         self.dim_heads = dim_heads
         self.nb_features = nb_features
         self.ortho_scaling = ortho_scaling
@@ -271,7 +271,7 @@ class FastAttention(nn.Module):
     def forward(self, q, k, v):
         device = q.device
 
-        if self.no_projection:
+        if self.no_projection:       
             q = q.softmax(dim = -1)
             k = torch.exp(k) if self.causal else k.softmax(dim = -2)
 
@@ -412,7 +412,7 @@ class Attention(nn.Module):
         assert dim % heads == 0, 'dimension must be divisible by number of heads'
         dim_head = default(dim_head, dim // heads)
         inner_dim = dim_head * heads
-        self.print_dim = True
+        self.print_dim = False
 
         if attention_mec == "performer":
            self.fast_attention = FastAttention(dim_head, nb_features, causal = causal, generalized_attention = generalized_attention, kernel_fn = kernel_fn, no_projection = no_projection)

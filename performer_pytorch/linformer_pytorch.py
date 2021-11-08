@@ -1,6 +1,8 @@
 import torch 
 from torch import nn
 
+from einops import rearrange, repeat
+
 ##################################
 # Linformer
 ##################################
@@ -41,7 +43,7 @@ class linformerAttention(nn.Module):
         self.full_attention = full_attention
         self.input_size = input_size
 
-        self.print_dim = True
+        self.print_dim = False
         self.E = get_EF(input_size, dim = self.dim_k, method = "learnable", head_dim = self.dim)
         self.F = get_EF(input_size, dim = self.dim_k, method = "learnable", head_dim = self.dim) if parameter_sharing == "none" or parameter_sharing == "headwise" else self.E
 
@@ -52,37 +54,39 @@ class linformerAttention(nn.Module):
             print("matmul(k, e)")
             print("k:"+str(k.shape))
             print("E:"+str(self.input_size)+", "+str(self.dim_k))
-        k = k.transpose(1,2)
+        
         if not self.full_attention:
             if self.is_proj_tensor:
+                # Always go to else
                 self.E = self.E.to(k.device)
-                k = torch.matmul(k, self.E)
+                #k = torch.matmul(k, self.E)
+                b, h, *_ = q.shape
+                projection_E = repeat(self.E, 'j d -> b h j d', b = b, h = h)
+                k = torch.einsum('...di,...dj->...ij', k, projection_E)
             else:
+                k = torch.einsum('...ij->...ji', k)
                 k = self.E(k)
         
         if self.print_dim:
             print("matmul(q, k)")
             print("q:"+str(q.shape))
-            print("K:"+str(K.shape))
-        q = torch.matmul(q, K)
-        P_bar = q/torch.sqrt(torch.tensor(self.dim).type(q.type())).to(q.device)
+            print("K:"+str(k.shape))
+        
+        q = torch.einsum('...id,...dj->...ij', q, k)
+        P_bar = q/torch.sqrt(torch.tensor(self.dim_k).type(q.type())).to(q.device)
 
         P_bar = P_bar.softmax(dim=-1)
         P_bar = self.dropout(P_bar)
         
         if not self.full_attention:
-            v = v.transpose(1,2)
             if self.is_proj_tensor:
-                if self.print_dim:
-                    print("matmul(v, F)")
-                    print("v:"+str(q.shape))
-                    print("F:"+str(self.input_size)+", "+str(self.dim_k))
-                    self.print_dim = False
+                # WRONG!
                 self.F = self.F.to(v.device)
                 v = torch.matmul(v, self.F)
             else:
+                v = torch.einsum('...ij->...ji', v)
                 v = self.F(v)
-            v = V.transpose(1,2)
         
-        out = torch.matmul(P_bar, V)
+        out = torch.einsum('...id,...jd->...ij', P_bar, v)
+        
         return out
