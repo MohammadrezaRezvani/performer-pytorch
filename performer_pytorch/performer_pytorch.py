@@ -16,7 +16,7 @@ from performer_pytorch.reversible import ReversibleSequence, SequentialSequence
 from distutils.version import LooseVersion
 
 # Moe
-from .linformer_pytorch import linformerAttention
+from .linformer_pytorch import linformerAttention, get_EF
 from torch.utils.checkpoint import checkpoint
 
 TORCH_GE_1_8_0 = LooseVersion(torch.__version__) >= LooseVersion('1.8.0')
@@ -232,7 +232,12 @@ class FastAttention(nn.Module):
         causal = False, 
         generalized_attention = False, 
         kernel_fn = nn.ReLU(), 
-        no_projection = False
+        no_projection = False,
+
+        #linformer stuff
+        input_size = 4096,
+        dim_k = 20,                 # Probably 20? Maybe the dimantion we want K and V be 
+        mix_attention = True
     ):
         super().__init__()
         nb_features = default(nb_features, int(dim_heads * math.log(dim_heads)))
@@ -262,6 +267,18 @@ class FastAttention(nn.Module):
                 print('unable to import cuda code for auto-regressive Performer. will default to the memory inefficient non-cuda version')
                 self.causal_linear_fn = causal_linear_attention_noncuda
 
+        # Adding linformer
+
+        self.dim = dim_heads
+        self.dim_k = dim_k
+        self.input_size = input_size
+
+        self.E = get_EF(input_size, dim = self.dim_k, method = "learnable", head_dim = self.dim)
+        self.F = get_EF(input_size, dim = self.dim_k, method = "learnable", head_dim = self.dim) if parameter_sharing == "none" or parameter_sharing == "headwise" else self.E
+
+        #
+        self.mix_Attention = mix_attention
+
     @torch.no_grad()
     def redraw_projection_matrix(self, device):
         projections = self.create_projection(device = device)
@@ -270,6 +287,15 @@ class FastAttention(nn.Module):
 
     def forward(self, q, k, v):
         device = q.device
+
+        if self.mix_Attention:
+            # Multiply k and E
+            k = torch.einsum('...ij->...ji', k)
+            k = self.E(k)
+
+            # Multiply v and F
+            v = torch.einsum('...ij->...ji', v)
+            v = self.F(v)
 
         if self.no_projection:       
             q = q.softmax(dim = -1)
@@ -415,7 +441,7 @@ class Attention(nn.Module):
         self.print_dim = False
 
         if attention_mec == "performer":
-           self.fast_attention = FastAttention(dim_head, nb_features, causal = causal, generalized_attention = generalized_attention, kernel_fn = kernel_fn, no_projection = no_projection)
+           self.fast_attention = FastAttention(dim_head, nb_features, causal = causal, generalized_attention = generalized_attention, kernel_fn = kernel_fn, no_projection = no_projection, input_size = max_seq_len)
         else:
            self.fast_attention = linformerAttention(dim = dim_head, dropout = dropout, input_size = max_seq_len)
 
