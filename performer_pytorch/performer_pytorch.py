@@ -99,15 +99,24 @@ def softmax_kernel(data, *, projection_matrix, is_query, normalize_data=True, ep
 
     ratio = (projection_matrix.shape[0] ** -0.5)
 
+    ####print("data:", data.shape)
+    ####print("projection_matrix:", projection_matrix.shape)
+
     projection = repeat(projection_matrix, 'j d -> b h j d', b = b, h = h)
     projection = projection.type_as(data)
 
+    ####print("projection:", projection.shape)
+
     data_dash = torch.einsum('...id,...jd->...ij', (data_normalizer * data), projection)
+    
+    ####print("data_dash:", data_dash.shape)
 
     diag_data = data ** 2
     diag_data = torch.sum(diag_data, dim=-1)
     diag_data = (diag_data / 2.0) * (data_normalizer ** 2)
     diag_data = diag_data.unsqueeze(dim=-1)
+
+    ####print("diag_data:", diag_data.shape)
 
     if is_query:
         data_dash = ratio * (
@@ -116,6 +125,8 @@ def softmax_kernel(data, *, projection_matrix, is_query, normalize_data=True, ep
     else:
         data_dash = ratio * (
             torch.exp(data_dash - diag_data - torch.amax(data_dash, dim=(-1, -2), keepdim=True)) + eps)
+
+    ####print("data_dash2:", data_dash.shape)
 
     return data_dash.type_as(data)
 
@@ -173,10 +184,27 @@ def gaussian_orthogonal_random_matrix(nb_rows, nb_columns, scaling = 0, device =
 
 # non-causal linear attention
 def linear_attention(q, k, v):
+    
+    ###print("qla:",q.shape)
+    ###print("kla:",k.shape)
+    ###print("vla:",v.shape)
+    
     k_cumsum = k.sum(dim = -2)
+    
+    ###print("k_cumsumla:",k_cumsum.shape)
+    
     D_inv = 1. / torch.einsum('...nd,...d->...n', q, k_cumsum.type_as(q))
+    
+    ###print("D_invla:",D_inv.shape)
+    
     context = torch.einsum('...nd,...ne->...de', k, v)
+    
+    ###print("context:",context.shape)
+    
     out = torch.einsum('...de,...nd,...n->...ne', context, q, D_inv)
+    
+    ###print("outla:",out.shape)
+    
     return out
 
 # efficient causal linear attention, created by EPFL
@@ -190,16 +218,61 @@ def causal_linear_attention(q, k, v, eps = 1e-6):
 
     causal_dot_product_fn = amp.float_function(CausalDotProduct.apply) if is_half else CausalDotProduct.apply
 
+    ###print("qcla:",q.shape)
+    ###print("kcla:",k.shape)
+    ###print("vcla:",v.shape)
+
     k_cumsum = k.cumsum(dim=-2) + eps
-    D_inv = 1. / torch.einsum('...nd,...nd->...n', q, k_cumsum.type_as(q))
+    
+    ###print("k_cumsum:",k_cumsum.shape)
+    
+    # Original Code
+    #D_inv = 1. / torch.einsum('...nd,...nd->...n', q, k_cumsum.type_as(q))
+    ####print("D_inv:",D_inv.shape)
+    
+    # New D
+    #q = (_,_,L,r)
+    
+    #k = (_,_,dim_k,r)
+    #k_cumsum = (_,_,dim_k,r)
+    
+    #v = (_,_,dim_k,r)
+    
+    ###print("q=",q)
+    ###print("k_cumsum=",k_cumsum)
+    
+    D_inv = 1. / torch.einsum('...lr,...dr->...l', q, k_cumsum.type_as(q))
+    ###print("D_inv:",D_inv.shape)
+    
+    #D_inv = 1. / D
+    ####print("D_inv:",D_inv.shape)
+    
 
     with cuda_context():
         if autocast_enabled:
             q, k, v = map(lambda t: t.float(), (q, k, v))
+            ####print("in if")
 
-        out = causal_dot_product_fn(q, k, v)
+        ####print("after if")
+        
+        ####print("qcla2:",q.shape)
+        ####print("kcla2:",k.shape)
+        ####print("vcla2:",v.shape)
+        
+        out = torch.einsum('...ki,...kj->...ij', k, v)
+        out = torch.einsum('...ik,...kj->...ij', q, out)
+        #out = causal_dot_product_fn(q, k, v)
+
+    ###print("outcla:",out.shape)
+    
+    ###print("out",out)
+    ###print("D_inv",D_inv)
+    
 
     out = torch.einsum('...nd,...n->...nd', out, D_inv)
+    
+    ###print("outcla2:",out.shape)
+    
     return out
 
 # inefficient causal linear attention, without cuda code, for reader's reference
@@ -236,7 +309,9 @@ class FastAttention(nn.Module):
 
         #linformer stuff
         input_size = 4096,
-        dim_k = 20,                 # Probably 20? Maybe the dimantion we want K and V be 
+        dim_k = 20,                 # Probably 20? Maybe the dimantion we want K and V be
+        full_attention = False,     # If False it will use linformer implementation
+        parameter_sharing = None,   # The `parameter_sharing` flag has to be either 'none', 'headwise', 'kv', or 'layerwise'."
         mix_attention = True
     ):
         super().__init__()
@@ -287,15 +362,23 @@ class FastAttention(nn.Module):
 
     def forward(self, q, k, v):
         device = q.device
+        
+        ###print("q:",q.shape)
+        ###print("k:",k.shape)
+        ###print("v:",v.shape)
 
         if self.mix_Attention:
             # Multiply k and E
             k = torch.einsum('...ij->...ji', k)
             k = self.E(k)
+            k = torch.einsum('...ij->...ji', k)
+            #k = k.to(device)
 
             # Multiply v and F
             v = torch.einsum('...ij->...ji', v)
             v = self.F(v)
+            v = torch.einsum('...ij->...ji', v)
+            #v = v.to(device)
 
         if self.no_projection:       
             q = q.softmax(dim = -1)
@@ -310,8 +393,18 @@ class FastAttention(nn.Module):
             q = create_kernel(q, is_query = True)
             k = create_kernel(k, is_query = False)
 
+        ###print("q2:",q.shape)
+        ###print("k2:",k.shape)
+        ###print("v2:",v.shape)
+        
+        ###print("causal:",self.causal)
+
+
         attn_fn = linear_attention if not self.causal else self.causal_linear_fn
         out = attn_fn(q, k, v)
+        
+        ###print("FA out:",out.shape)
+        
         return out
 
 # a module for keeping track of when to update the projections
@@ -456,6 +549,9 @@ class Attention(nn.Module):
         self.to_out = nn.Linear(inner_dim, dim, bias = attn_out_bias)
         self.dropout = nn.Dropout(dropout)
 
+        ###print("dim=",dim)
+        ###print("inner_dim=",inner_dim)
+
     def forward(self, x, pos_emb = None, context = None, mask = None, context_mask = None, **kwargs):
         b, n, _, h, gh = *x.shape, self.heads, self.global_heads
 
@@ -464,7 +560,17 @@ class Attention(nn.Module):
         context = default(context, x)
         context_mask = default(context_mask, mask) if not cross_attend else context_mask
 
-        q, k, v = self.to_q(x), self.to_k(context), self.to_v(context)
+        ###print("x:", x.shape)
+        ###print("context:", context.shape)
+        ###print("cross_attend = ", cross_attend)
+        
+        ###print("x&context = ",torch.equal(x, context))
+
+        q = self.to_q(x)
+        k = self.to_k(context)
+        v = self.to_v(context)
+        
+        ###print("After to_q")
 
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = h), (q, k, v))
         (q, lq), (k, lk), (v, lv) = map(lambda t: (t[:, :gh], t[:, gh:]), (q, k, v))
@@ -480,30 +586,41 @@ class Attention(nn.Module):
                 q, k = apply_rotary_pos_emb(q, k, pos_emb)
       
             if self.print_dim:
-                print("q:"+str(q.shape))
-                print("k:"+str(k.shape))
-                print("v:"+str(v.shape))
+                ###print("q:"+str(q.shape))
+                ###print("k:"+str(k.shape))
+                ###print("v:"+str(v.shape))
                 self.print_dim = False
             out = self.fast_attention(q, k, v)
+            
+            ###print("out1:", out.shape)
+            
             attn_outs.append(out)
 
         if not empty(lq):
             assert not cross_attend, 'local attention is not compatible with cross attention'
             out = self.local_attn(lq, lk, lv, input_mask = mask)
+            
+            ###print("out2:", out.shape)
+            
             attn_outs.append(out)
 
         out = torch.cat(attn_outs, dim = 1)
         out = rearrange(out, 'b h n d -> b n (h d)')
         out =  self.to_out(out)
+        
+        ###print("out3:", out.shape)
+        
         return self.dropout(out)
 
 class SelfAttention(Attention):
     def forward(self, *args, context = None, **kwargs):
+        ###print("In SelfAttention")
         assert not exists(context), 'self attention should not receive context'
         return super().forward(*args, **kwargs)
 
 class CrossAttention(Attention):
     def forward(self, *args, context = None, **kwargs):
+        ###print("In CrossAttention")
         assert exists(context), 'cross attention should receive context'
         return super().forward(*args, context = context, **kwargs)
 

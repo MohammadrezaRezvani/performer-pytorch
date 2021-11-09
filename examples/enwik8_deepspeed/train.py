@@ -33,7 +33,7 @@ def add_argument():
 
 # constants
 
-EPOCHS = 20
+EPOCHS = 1
 VALIDATE_EVERY  = 100
 GENERATE_EVERY  = 500
 GENERATE_LENGTH = 512
