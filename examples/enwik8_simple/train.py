@@ -36,6 +36,8 @@ def decode_tokens(tokens):
     return ''.join(list(map(decode_token, tokens)))
 
 # instantiate model
+print("Batch size: ", int(sys.argv[3]))
+print("Num of batches: ", int(sys.argv[4]))
 
 model = PerformerLM(
     num_tokens = 256,
@@ -49,7 +51,8 @@ model = PerformerLM(
     use_scalenorm = True,
     shift_tokens = True,
     local_attn_heads = (8, 8, 8, 6, 4, 2),
-    attention_mec = "linformer" if sys.argv[1] == "l" else "performer"
+    attention_mec = "linformer" if sys.argv[1] == "l" else "performer",
+    mix_attention = True if sys.argv[2] == "mix" else False
 )
 
 model = AutoregressiveWrapper(model)
@@ -78,8 +81,8 @@ class TextSamplerDataset(Dataset):
 
 train_dataset = TextSamplerDataset(data_train, SEQ_LEN)
 val_dataset   = TextSamplerDataset(data_val, SEQ_LEN)
-train_loader  = cycle(DataLoader(train_dataset, batch_size = BATCH_SIZE))
-val_loader    = cycle(DataLoader(val_dataset, batch_size = BATCH_SIZE))
+train_loader  = cycle(DataLoader(train_dataset, batch_size = int(sys.argv[3])))
+val_loader    = cycle(DataLoader(val_dataset, batch_size = int(sys.argv[3])))
 
 # optimizer
 
@@ -88,7 +91,7 @@ scaler = GradScaler()
 
 # training
 
-for i in tqdm.tqdm(range(NUM_BATCHES), mininterval=10., desc='training'):
+for i in tqdm.tqdm(range(int(sys.argv[4])), mininterval=10., desc='training'):
     model.train()
 
     for __ in range(GRADIENT_ACCUMULATE_EVERY):

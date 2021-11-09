@@ -525,7 +525,8 @@ class Attention(nn.Module):
         no_projection = False,
         qkv_bias = False,
         attn_out_bias = True,
-        attention_mec = "performer"
+        attention_mec = "performer",
+        mix_attention = True
     ):
         super().__init__()
         assert dim % heads == 0, 'dimension must be divisible by number of heads'
@@ -534,7 +535,7 @@ class Attention(nn.Module):
         self.print_dim = False
 
         if attention_mec == "performer":
-           self.fast_attention = FastAttention(dim_head, nb_features, causal = causal, generalized_attention = generalized_attention, kernel_fn = kernel_fn, no_projection = no_projection, input_size = max_seq_len)
+           self.fast_attention = FastAttention(dim_head, nb_features, causal = causal, generalized_attention = generalized_attention, kernel_fn = kernel_fn, no_projection = no_projection, input_size = max_seq_len, mix_attention = mix_attention)
         else:
            self.fast_attention = linformerAttention(dim = dim_head, dropout = dropout, input_size = max_seq_len)
 
@@ -695,7 +696,8 @@ class Performer(nn.Module):
         qkv_bias = True,
         attn_out_bias = True,
         shift_tokens = False,
-        attention_mec = "performer"
+        attention_mec = "performer",
+        mix_attention = True
     ):
         super().__init__()
         layers = nn.ModuleList([])
@@ -713,7 +715,7 @@ class Performer(nn.Module):
 
         for _, local_heads in zip(range(depth), local_attn_heads):
 
-            attn = SelfAttention(dim, max_seq_len = max_seq_len, causal = causal, heads = heads, dim_head = dim_head, local_heads = local_heads, local_window_size = local_window_size, nb_features = nb_features, generalized_attention = generalized_attention, kernel_fn = kernel_fn, dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias, attn_out_bias = attn_out_bias, attention_mec = attention_mec)
+            attn = SelfAttention(dim, max_seq_len = max_seq_len, causal = causal, heads = heads, dim_head = dim_head, local_heads = local_heads, local_window_size = local_window_size, nb_features = nb_features, generalized_attention = generalized_attention, kernel_fn = kernel_fn, dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias, attn_out_bias = attn_out_bias, attention_mec = attention_mec, mix_attention = mix_attention)
             ff = Chunk(ff_chunks, FeedForward(dim, mult = ff_mult, dropout = ff_dropout, glu = ff_glu), along_dim = 1)
 
             if shift_tokens:
@@ -727,7 +729,7 @@ class Performer(nn.Module):
                 continue
 
             layers.append(nn.ModuleList([
-                wrapper_fn(CrossAttention(dim, max_seq_len = max_seq_len, heads = heads, dim_head = dim_head, nb_features = nb_features, generalized_attention = generalized_attention, kernel_fn = kernel_fn, dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias, attn_out_bias = attn_out_bias, attention_mec = attention_mec)),
+                wrapper_fn(CrossAttention(dim, max_seq_len = max_seq_len, heads = heads, dim_head = dim_head, nb_features = nb_features, generalized_attention = generalized_attention, kernel_fn = kernel_fn, dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias, attn_out_bias = attn_out_bias, attention_mec = attention_mec,  mix_attention = mix_attention)),
                 wrapper_fn(Chunk(ff_chunks, FeedForward(dim, mult = ff_mult, dropout = ff_dropout, glu = ff_glu), along_dim = 1))
             ]))
 
@@ -787,11 +789,13 @@ class PerformerLM(nn.Module):
         qkv_bias = False,
         attn_out_bias = False,
         shift_tokens = False,
-        attention_mec = "performer"
+        attention_mec = "performer",
+        mix_attention = True
     ):
         super().__init__()
 
         print(attention_mec)        
+        print("Mixed attention: ", mix_attention)        
 
         local_attn_heads = cast_tuple(local_attn_heads)
 
@@ -811,7 +815,7 @@ class PerformerLM(nn.Module):
 
         self.dropout = nn.Dropout(emb_dropout)
 
-        self.performer = Performer(dim, depth, heads, dim_head, max_seq_len, local_attn_heads, local_window_size, causal, ff_mult, nb_features, feature_redraw_interval, reversible, ff_chunks, generalized_attention, kernel_fn, use_scalenorm, use_rezero, ff_glu, ff_dropout, attn_dropout, cross_attend, no_projection, auto_check_redraw, qkv_bias, attn_out_bias, shift_tokens, attention_mec = attention_mec)
+        self.performer = Performer(dim, depth, heads, dim_head, max_seq_len, local_attn_heads, local_window_size, causal, ff_mult, nb_features, feature_redraw_interval, reversible, ff_chunks, generalized_attention, kernel_fn, use_scalenorm, use_rezero, ff_glu, ff_dropout, attn_dropout, cross_attend, no_projection, auto_check_redraw, qkv_bias, attn_out_bias, shift_tokens, attention_mec = attention_mec, mix_attention = mix_attention)
         self.norm = nn.LayerNorm(dim)
         self.to_out = nn.Linear(dim, num_tokens) if not tie_embed else None
 
